@@ -1,12 +1,13 @@
 import asyncio
+import sys
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 async def main():
     async with stdio_client(
-    # Executa diretamente com Python para compatibilidade no Windows sem uv CLI
-    StdioServerParameters(command="python", args=["-m", "mcp_simple_tool"])
+        # Usa o mesmo Python do cliente (venv) para iniciar o servidor no Windows
+        StdioServerParameters(command=sys.executable, args=["-m", "mcp_simple_tool", "--transport", "stdio"])
     ) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -19,26 +20,27 @@ async def main():
             #result = await session.call_tool("fetch", {"url": "https://uol.com.br"})
             #print("Resultado do fetch:", result)
 
-            # Exemplo: chame a ferramenta add_note (descomente para usar)
+            # Cria uma nova nota
             note = {
-                "content": "Esta é uma nota de teste 2.",
-                "title": "Nota de Teste 2",
-                "tags": ["teste", "demo", "mcp"]
+                "content": "Nota criada via MCP em execução automática.",
+                "title": "Nota MCP",
+                "tags": ["mcp", "demo"]
             }
-            #result = await session.call_tool(
-            #    "add_note",
-            #    {"content": note["content"], "title": note["title"], "tags": note["tags"]}
-            # )
-            #print("Resultado do add_note:", result)
+            result = await session.call_tool(
+                "add_note",
+                {"content": note["content"], "title": note["title"], "tags": note["tags"]}
+            )
+            print("Resultado do add_note:", result)
 
             # Call the search_notes tool
-            search_params = {
-                "query": "reunião",
-                "title": "reunião",
-                "tags": ["reunião"]
-            }
-            result = await session.call_tool("search_notes", search_params)
-            print("Resultado do search_notes:", result)
+            # Opcional: depois pesquise a nota
+            # search_params = {
+            #     "query": "Nota MCP",
+            #     "title": "Nota MCP",
+            #     "tags": ["mcp"]
+            # }
+            # result = await session.call_tool("search_notes", search_params)
+            # print("Resultado do search_notes:", result)
 
 
 asyncio.run(main())

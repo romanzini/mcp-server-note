@@ -1,0 +1,10 @@
+{ 
+	"servers": { 
+		"my-mcp-server": { 
+			"type": "stdio", 
+			"command": "C:/Projetos/mcp-server-note/venv/Scripts/python.exe", 
+			"args": ["-m", "mcp_simple_tool.server", "--transport", "stdio"] 
+			} 
+		}, 
+			"inputs": [] 
+		}
