@@ -35,9 +35,9 @@ def search_notes_tool(query: str, title: str | None = None, tags: list[str] | No
     if title:
         query_builder = query_builder.ilike("title", f"%{title}%")
     if tags:
-        # Busca notas que tenham pelo menos uma tag na lista
-        for tag in tags:
-            query_builder = query_builder.ilike("tags", f"%{tag}%")
+        # Busca notas que tenham ao menos uma tag em comum com a lista (array overlap)
+        # Usa o método overlaps do supabase-py, que formata corretamente para PostgREST
+        query_builder = query_builder.overlaps("tags", tags)
 
     response = query_builder.execute()
     return {"results": response.data}
