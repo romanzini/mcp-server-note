@@ -20,17 +20,24 @@ async def main():
             #result = await session.call_tool("fetch", {"url": "https://uol.com.br"})
             #print("Resultado do fetch:", result)
 
-            # Cria uma nova nota
-            note = {
-                "content": "Nota criada via MCP em execução automática.",
-                "title": "Nota MCP",
-                "tags": ["mcp", "demo"]
-            }
-            result = await session.call_tool(
-                "add_note",
-                {"content": note["content"], "title": note["title"], "tags": note["tags"]}
-            )
-            print("Resultado do add_note:", result)
+            # Exemplo: Notes Chat (LLM via OpenRouter)
+            # result = await session.call_tool(
+            #     "notes_chat",
+            #     {"prompt": "Crie uma nota 'Reunião de status' com tags [mcp, trabalho]"}
+            # )
+            # print("Resultado do notes_chat:", result)
+
+            # Cria uma nova nota (exemplo direto)
+            # note = {
+            #     "content": "Nota criada via MCP em execução automática.",
+            #     "title": "Nota MCP",
+            #     "tags": ["mcp", "demo"]
+            # }
+            # result = await session.call_tool(
+            #     "add_note",
+            #     {"content": note["content"], "title": note["title"], "tags": note["tags"]}
+            # )
+            # print("Resultado do add_note:", result)
 
             # Call the search_notes tool
             # Opcional: depois pesquise a nota

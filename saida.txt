@@ -1,0 +1,41 @@
+Aqui está o que implementei para integrar a LLM da OpenRouter ao seu servidor MCP, conforme o plano:
+
+O que foi adicionado
+
+Integração LLM:
+mcp_simple_tool/llm/openrouter_client.py: wrapper com OpenAI SDK (base_url do OpenRouter), headers opcionais e função chat_with_tools para tool-calls.
+mcp_simple_tool/llm/prompts.py: prompt do sistema em PT-BR.
+Nova ferramenta MCP:
+notes_chat registrada em server.py
+Entrada: prompt (obrigatório), model (opcional), params.temperature / params.max_tokens (opcionais).
+Fluxo: consulta a LLM → recebe tool_calls → executa add_note/search_notes → retorna texto e actions executadas.
+Padronização e Docs:
+requirements.txt: adicionado openai.
+README.md: documentado OpenRouter (variáveis OPENROUTER_*), uso da notes_chat, logs JSON e LOG_LEVEL.
+Variáveis de ambiente (adicione ao .env)
+
+OPENROUTER_API_KEY=... (obrigatório)
+OPENROUTER_MODEL=openrouter/openai/gpt-4o-mini (opcional, default)
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1 (opcional)
+OPENROUTER_REFERER, OPENROUTER_TITLE (opcionais, boas práticas)
+Como testar
+
+Ative o venv e garanta dependências instaladas (já instalei openai).
+Exporte sua OPENROUTER_API_KEY no .env.
+Inicie o cliente (que inicia o servidor stdio automaticamente) e chame notes_chat:
+No arquivo client.py já deixei um exemplo comentado de chamada; descomente:
+ferramenta "notes_chat" com prompt tipo: "Crie uma nota 'Reunião de status' com tags [mcp, trabalho]"
+Alternativamente, rode o servidor e cliente em terminais separados:
+Servidor: python.exe -m mcp_simple_tool.server --transport stdio
+Cliente: python.exe client.py
+
+Notas
+
+A API do OpenRouter exige a key válida. Se faltar, retorna erro padronizado.
+Rede/Proxy: segue as mesmas configurações de SSL já tratadas (truststore).
+Logs: continuam em JSON; ajuste nível com MCP_LOG_LEVEL ou LOG_LEVEL.
+Próximos incrementos (se quiser)
+
+Suportar múltiplas tool-call iterações (loop até síntese).
+Incluir resumo estruturado de resultados na resposta final do notes_chat.
+Adicionar testes unitários com mocks do OpenRouter e do Supabase.

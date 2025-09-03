@@ -30,6 +30,7 @@ Ferramentas
 - fetch: busca o conteúdo de uma URL.
 - add_note: insere uma nota (content, title, tags[])
 - search_notes: busca por content/title (ilike) e por tags (overlap em text[])
+- notes_chat: interface em linguagem natural; usa OpenRouter para decidir e acionar add_note/search_notes e sintetizar a resposta.
 
 SSL / Proxy corporativo
 - Ambiente corporativo pode exigir CA customizado. Duas opções:
@@ -57,6 +58,17 @@ Logs
 - Saída estruturada em JSON no stdout para facilitar análise.
 - Nível de log configurável por variável de ambiente (prioridade): MCP_LOG_LEVEL, depois LOG_LEVEL. Valores típicos: DEBUG, INFO, WARNING, ERROR.
 	- Exemplo (PowerShell): $env:MCP_LOG_LEVEL = "DEBUG"
+
+OpenRouter (LLM)
+- Variáveis no .env:
+	- OPENROUTER_API_KEY=<sua api key>
+	- OPENROUTER_MODEL=openrouter/openai/gpt-4o-mini (padrão)
+	- OPENROUTER_BASE_URL=https://openrouter.ai/api/v1 (opcional)
+	- OPENROUTER_REFERER, OPENROUTER_TITLE (opcional: boas práticas)
+- Dependência: openai (usado com base_url do OpenRouter)
+- Uso via MCP (notes_chat):
+	- prompt: instrução em linguagem natural
+	- params.temperature (opcional), params.max_tokens (opcional)
 
 $env:MCP_INSECURE_SKIP_VERIFY="1"
 

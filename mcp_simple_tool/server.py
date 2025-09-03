@@ -19,6 +19,7 @@ except Exception:
 
 # Funções utilitárias (Supabase)
 from mcp_simple_tool.tools.notes import add_note_tool, search_notes_tool
+from mcp_simple_tool.llm.openrouter_client import chat_with_tools
 
 
 async def fetch_website(url: str) -> List[types.ContentBlock]:
@@ -41,6 +42,31 @@ def main(port: int, transport: str) -> int:
     # Handler único de ferramentas
     @app.call_tool()
     async def handle_tools(name: str, arguments: dict[str, Any]) -> List[types.ContentBlock]:
+        if name == "notes_chat":
+            prompt = (arguments or {}).get("prompt")
+            model = (arguments or {}).get("model")
+            params = (arguments or {}).get("params") or {}
+            temperature = float(params.get("temperature", 0.2))
+            max_tokens = int(params.get("max_tokens", 400))
+
+            text, tool_calls = await chat_with_tools(prompt, model=model, temperature=temperature, max_tokens=max_tokens)
+
+            actions: list[dict[str, Any]] = []
+            if tool_calls:
+                for call in tool_calls:
+                    tool = call.get("tool")
+                    args = call.get("args") or {}
+                    if tool == "add_note":
+                        res = add_note_tool(args.get("content"), args.get("title"), args.get("tags") or [])
+                        actions.append({"tool": tool, "args": args, "result": res})
+                    elif tool == "search_notes":
+                        res = search_notes_tool(args.get("query"), args.get("title"), args.get("tags") or [])
+                        actions.append({"tool": tool, "args": args, "result": res})
+                    else:
+                        actions.append({"tool": tool, "args": args, "result": {"success": False, "error": "tool not supported"}})
+
+            payload = {"success": True, "text": text, "actions": actions}
+            return [types.TextContent(type="text", text=str(payload))]
         if name == "fetch":
             url = arguments.get("url")
             if not url:
@@ -69,6 +95,26 @@ def main(port: int, transport: str) -> int:
     @app.list_tools()
     async def list_tools() -> List[types.Tool]:
         return [
+            types.Tool(
+                name="notes_chat",
+                title="Notes Chat",
+                description="Interaja em linguagem natural para criar e buscar notas (usa LLM OpenRouter).",
+                inputSchema={
+                    "type": "object",
+                    "required": ["prompt"],
+                    "properties": {
+                        "prompt": {"type": "string", "description": "Instrução do usuário"},
+                        "model": {"type": "string", "description": "ID do modelo no OpenRouter"},
+                        "params": {
+                            "type": "object",
+                            "properties": {
+                                "temperature": {"type": "number"},
+                                "max_tokens": {"type": "integer"}
+                            }
+                        }
+                    }
+                }
+            ),
             types.Tool(
                 name="fetch",
                 title="Website Fetcher",
