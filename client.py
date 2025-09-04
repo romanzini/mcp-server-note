@@ -21,11 +21,11 @@ async def main():
             #print("Resultado do fetch:", result)
 
             # Exemplo: Notes Chat (LLM via OpenRouter)
-            # result = await session.call_tool(
-            #     "notes_chat",
-            #     {"prompt": "Crie uma nota 'Reunião de status' com tags [mcp, trabalho]"}
-            # )
-            # print("Resultado do notes_chat:", result)
+            result = await session.call_tool(
+                "notes_chat",
+                {"prompt": "Crie uma nota 'Reunião de status' com tags [mcp, trabalho]"}
+            )
+            print("Resultado do notes_chat:", result)
 
             # Cria uma nova nota (exemplo direto)
             # note = {
@@ -41,13 +41,13 @@ async def main():
 
             # Call the search_notes tool
             # Opcional: depois pesquise a nota
-            # search_params = {
+            #search_params = {
             #     "query": "Nota MCP",
             #     "title": "Nota MCP",
             #     "tags": ["mcp"]
-            # }
-            # result = await session.call_tool("search_notes", search_params)
-            # print("Resultado do search_notes:", result)
+            #}
+            #result = await session.call_tool("search_notes", search_params)
+            #print("Resultado do search_notes:", result)
 
 
 asyncio.run(main())
