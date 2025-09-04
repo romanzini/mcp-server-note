@@ -22,7 +22,8 @@ class DummyClient:
                         raise RuntimeError('No more responses')
                     return self._outer._responses.pop(0)
             def __init__(self, outer):
-                self.completions = DummyClient.Chat.Completions(outer)
+                # Referência corrigida para classe aninhada
+                self.completions = Chat.Completions(outer)
         self.chat = Chat(self)
 
 @pytest.mark.asyncio

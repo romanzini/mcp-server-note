@@ -22,6 +22,7 @@ except Exception:
 # Funções utilitárias (Supabase)
 from mcp_simple_tool.tools.notes import add_note_tool, search_notes_tool
 from mcp_simple_tool.llm.openrouter_client import chat_with_tools
+from mcp_simple_tool.llm.orchestrator import run_notes_chat
 
 logger = logging.getLogger("mcp_notes.server")
 if not logger.handlers:
@@ -61,80 +62,13 @@ def main(port: int, transport: str) -> int:
             if not notes_chat_enabled():
                 return [types.TextContent(type="text", text=json.dumps({"success": False, "error": "notes_chat desabilitado (defina ENABLE_NOTES_CHAT=1 e OPENROUTER_API_KEY)"}))]
             try:
-                prompt = (arguments or {}).get("prompt")
-                model = (arguments or {}).get("model")
-                params = (arguments or {}).get("params") or {}
-                temperature = float(params.get("temperature", 0.2))
-                max_tokens = int(params.get("max_tokens", 400))
-                timeout_seconds = float(params.get("timeout_seconds", 60))
-
-                if not prompt or not str(prompt).strip():
-                    raise ValueError("prompt vazio")
-
-                # 1ª passada: planejar + possivelmente solicitar ferramentas
-                draft_text, planned_actions = await chat_with_tools(
-                    prompt,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    timeout=timeout_seconds,
+                payload = await run_notes_chat(
+                    (arguments or {}).get("prompt"),
+                    model=(arguments or {}).get("model"),
+                    params=(arguments or {}).get("params") or {},
+                    add_note_func=add_note_tool,
+                    search_notes_func=search_notes_tool,
                 )
-                logger.debug("notes_chat draft_text=%s planned_actions=%s", draft_text[:120], planned_actions)
-
-                executed: list[dict[str, Any]] = []
-                # Executar ações planejadas
-                for act in planned_actions:
-                    tool = act.get("tool")
-                    args = act.get("args") or {}
-                    if tool == "add_note":
-                        res = add_note_tool(args.get("content"), args.get("title"), args.get("tags") or [])
-                    elif tool == "search_notes":
-                        res = search_notes_tool(args.get("query"), args.get("title"), args.get("tags") or [])
-                        # Limita resultados para reduzir tokens (top 10)
-                        try:
-                            if res.get("success") and isinstance(res.get("data"), dict):
-                                results = res["data"].get("results")
-                                if isinstance(results, list) and len(results) > 10:
-                                    res["data"]["results"] = results[:10]
-                                    res["data"]["truncated_results"] = True
-                        except Exception:  # pragma: no cover
-                            pass
-                    else:
-                        res = {"success": False, "error": "tool not supported"}
-                    executed.append({"tool": tool, "args": args, "result": res})
-
-                final_text = draft_text
-                synthesized = False
-                if executed:
-                    # 2ª passada: síntese final considerando resultados
-                    # Monta contexto compacto
-                    ctx_parts = []
-                    for ex in executed:
-                        res = ex["result"]
-                        res_str = json.dumps(res, ensure_ascii=False)[:800]
-                        ctx_parts.append(f"Ferramenta={ex['tool']}: args={json.dumps(ex['args'], ensure_ascii=False)} resultado={res_str}")
-                    tool_context = "\n".join(ctx_parts)
-                    synth_prompt = (
-                        f"O usuário pediu: {prompt}\n\n"
-                        f"Resultados das ferramentas executadas:\n{tool_context}\n\n"
-                        "Produza uma resposta final concisa em português para o usuário, incorporando os dados relevantes."
-                    )
-                    final_text, _ = await chat_with_tools(
-                        synth_prompt,
-                        model=model,
-                        temperature=0.2,  # menor variação na síntese
-                        max_tokens=max_tokens,
-                        timeout=timeout_seconds,
-                        max_tool_passes=1,  # não precisamos de novas ferramentas
-                    )
-                    synthesized = True
-
-                payload = {
-                    "success": True,
-                    "text": final_text,
-                    "actions": executed,
-                    "synthesized": synthesized,
-                }
                 return [types.TextContent(type="text", text=json.dumps(payload, ensure_ascii=False))]
             except Exception as e:  # pragma: no cover
                 logger.exception("notes_chat error")

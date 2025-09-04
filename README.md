@@ -1,104 +1,150 @@
-MCP Server Note
-================
+## MCP Server Note
 
-Servidor MCP simples para criar e buscar notas armazenadas no Supabase.
+Servidor MCP + API web para criação, busca e chat inteligente sobre notas (Supabase + OpenRouter).
 
-Pré-requisitos
-- Python 3.12
-- Dependências instaladas no venv
+### Visão Geral
+Componentes:
+- Ferramentas MCP: `add_note`, `search_notes`, (opcional) `notes_chat`.
+- Orquestrador LLM multi‑pass (`run_notes_chat`): planejamento → execução de ferramentas → síntese final.
+- API Web (FastAPI) com histórico (SQLite), autenticação por API key, rate limiting e interface HTML simples.
+- Tratamento de erros de rede / proxy com códigos diferenciados.
 
-Configuração
-1) Crie e ative o venv e instale as dependências (exemplo com pip):
-	 - Windows PowerShell:
-		 - python -m venv venv
-		 - ./venv/Scripts/Activate.ps1
-		 - pip install -r requirements.txt
-		 - pip install mcp[cli]==1.13.1 python-dotenv supabase starlette uvicorn click anyio httpx truststore openai pytest
-		
-2) Crie um arquivo .env na raiz com:
-	 - SUPABASE_URL=https://<seu-projeto>.supabase.co
-	 - SUPABASE_KEY=<sua-anon-key>
+### Pré‑requisitos
+- Python >= 3.12
+- Chaves Supabase (se quiser persistência real de notas) e OpenRouter (para LLM real).
 
-Execução
-- Servidor (stdio):
-	- venv/Scripts/python.exe -m mcp_simple_tool.server --transport stdio
+### Instalação
+```powershell
+python -m venv venv
+./venv/Scripts/Activate.ps1
+pip install -e .
+```
 
-- Cliente (inicia o servidor stdio automaticamente):
-	- venv/Scripts/python.exe client.py
+Arquivo `.env` (exemplo mínimo):
+```
+SUPABASE_URL=https://<seu-projeto>.supabase.co
+SUPABASE_KEY=<anon-key>
+OPENROUTER_API_KEY=<sua-key>
+ENABLE_NOTES_CHAT=1
+```
 
-Ferramentas
-- fetch: busca o conteúdo de uma URL.
-- add_note: insere uma nota (content, title, tags[])
-- search_notes: busca por content/title (ilike) e por tags (overlap em text[])
-- notes_chat: interface em linguagem natural; usa OpenRouter para decidir e acionar add_note/search_notes e sintetizar a resposta.
+### Executar (MCP stdio)
+```powershell
+venv/Scripts/python.exe -m mcp_simple_tool.server --transport stdio
+```
 
-Cache & Performance
-- search_notes possui cache em memória (TTL 30s) por combinação (query, title, tags). Respostas indicam { cached: true/false }.
-- add_note invalida o cache global (flush) para garantir consistência simples.
-- Limite de resultados em fluxo notes_chat: somente as primeiras 10 notas são usadas na síntese para economizar tokens.
+Cliente de exemplo:
+```powershell
+venv/Scripts/python.exe client.py
+```
 
-Sanitização de Tags
-- Tags são normalizadas: trim, limite 40 chars, apenas [A-Za-z0-9-_].
-- Duplicatas removidas preservando ordem.
+### API Web / UI
+Iniciar:
+```powershell
+python -m mcp_simple_tool.webapp.app
+```
+Variáveis úteis: `FRONTEND_PORT`, `AUTH_API_KEY`, `RATE_LIMIT_PER_MIN`, `HISTORY_DB_PATH`.
 
-Testes
-- Dependência pytest adicionada.
-- Testes de LLM (chat_with_tools) em `tests/test_openrouter_client.py` cobrindo:
-	1) Fluxo sem ferramentas.
-	2) Fluxo com chamada de ferramenta e síntese.
-	3) Truncation de prompt (ação _system).
-- Recomendado adicionar futuramente testes para cache e sanitização.
+Endpoints:
+- `POST /api/chat`  { message, session_id?, model?, params? }
+- `GET  /api/history?session_id=...`
 
-SSL / Proxy corporativo
-- Ambiente corporativo pode exigir CA customizado. Duas opções:
-	1) truststore (recomendado): já habilitado no server; usa o repositório de CAs do Windows.
-	2) Modo inseguro (dev apenas): defina $env:MCP_INSECURE_SKIP_VERIFY="1" antes de rodar.
+### Persistência de Histórico (SQLite)
+- Ativa por padrão (`chat_history.db`).
+- `HISTORY_DB_PATH` para custom path.
+- `DISABLE_PERSISTENCE=1` para desativar.
 
-VS Code MCP (mcp.json)
-- Aponte para o Python do venv:
-	{
-		"servers": {
-			"my-mcp-server": {
-				"type": "stdio",
-				"command": "C:/Projetos/mcp-server-note/venv/Scripts/python.exe",
-				"args": ["-m", "mcp_simple_tool", "--transport", "stdio"]
-			}
+### Autenticação & Rate Limit
+- `AUTH_API_KEY` exige header `x-api-key` (ou `?api_key=`).
+- `RATE_LIMIT_PER_MIN` (default 60) por chave/IP.
+
+### Variáveis de Ambiente (Resumo)
+| Variável | Função |
+|----------|--------|
+| SUPABASE_URL / SUPABASE_KEY | Credenciais Supabase |
+| OPENROUTER_API_KEY | Chave LLM (obrigatória para uso real) |
+| OPENROUTER_MODEL | Modelo (default auto) |
+| OPENROUTER_BASE_URL | Endpoint OpenRouter (default oficial) |
+| OPENROUTER_REFERER / OPENROUTER_TITLE | Header de boas práticas |
+| ENABLE_NOTES_CHAT | Ativa ferramenta de chat no MCP |
+| MCP_LOG_LEVEL / LOG_LEVEL | Nível de log (DEBUG, INFO, ...) |
+| HISTORY_DB_PATH | Caminho SQLite de histórico |
+| DISABLE_PERSISTENCE | Desliga histórico se definido |
+| AUTH_API_KEY | Protege endpoints web |
+| RATE_LIMIT_PER_MIN | Limite por minuto |
+| FRONTEND_PORT | Porta interface web |
+| MCP_INSECURE_SKIP_VERIFY | Pular verificação TLS (dev) |
+
+### Fluxo LLM (Multi‑Pass)
+1. Passo de planejamento: modelo pode sugerir `tool_calls`.
+2. Execução real das ferramentas (fora do modelo).
+3. Passo de síntese final (sem novas ferramentas) consolidando resultados (máx 10 notas para economizar tokens).
+4. Resposta final: `{ text, actions, synthesized }`.
+
+### Cache & Tags
+- Cache in‑memory para `search_notes` (TTL 30s) por (query, title, tags).
+- `add_note` invalida totalmente o cache.
+- Tags sanitizadas (trim, <=40 chars, charset `[A-Za-z0-9-_]`, sem duplicatas mantendo ordem).
+
+### Tratamento de Erros (Web)
+| Situação | HTTP | JSON adicional |
+|----------|------|----------------|
+| Proxy corporativo bloqueando (403 com HTML) | 502 | `proxy_blocked: true` |
+| Falha de rede/conexão | 502 | `code: "network_error"` |
+| Rate limit interno LLM (429) | 429 | `status: 429` |
+| Genérico LLM | 500 | `error` truncado |
+
+### Logs
+- JSON estruturado no stdout.
+- Ajuste nível via `MCP_LOG_LEVEL` (preferência) ou `LOG_LEVEL`.
+
+### VS Code (mcp.json)
+```json
+{
+	"servers": {
+		"notes-mcp": {
+			"type": "stdio",
+			"command": "C:/Projetos/mcp-server-note/venv/Scripts/python.exe",
+			"args": ["-m", "mcp_simple_tool.server", "--transport", "stdio"]
 		}
 	}
+}
+```
 
-Solução de problemas
-- Connection closed: verifique se o server está iniciando (arg initialization_options passado a app.run) e se o comando no mcp.json é válido.
-- SSL: use truststore ou MCP_INSECURE_SKIP_VERIFY=1.
-- Supabase 22P02 / 42883: garanta que tags seja text[] e use overlaps no filtro; evite ILIKE em arrays.
+### Testes
+Rodar tudo:
+```powershell
+pytest -q
+```
+Principais arquivos:
+- `tests/test_openrouter_client.py` (multi‑pass + truncation)
+- `tests/test_notes_cache_and_tags.py` (cache / tags)
+- `tests/test_web_chat_api.py` (chat + síntese) *usa httpx.AsyncClient*
+- `tests/test_web_chat_security_persistence.py` (auth, rate limit, histórico)
+- `tests/test_error_mapping.py` (mapeamento network/proxy) *pode stubbar orchestrator*
 
-Logs
-- Saída estruturada em JSON no stdout para facilitar análise.
-- Nível de log configurável por variável de ambiente (prioridade): MCP_LOG_LEVEL, depois LOG_LEVEL. Valores típicos: DEBUG, INFO, WARNING, ERROR.
-	- Exemplo (PowerShell): $env:MCP_LOG_LEVEL = "DEBUG"
+### Exemplo Rápido (PowerShell)
+```powershell
+$env:OPENROUTER_API_KEY = "xxxx"
+$env:ENABLE_NOTES_CHAT = "1"
+python -m mcp_simple_tool.server --transport stdio
+```
 
-OpenRouter (LLM)
-- Variáveis no .env:
-	- OPENROUTER_API_KEY=<sua api key>
-	- OPENROUTER_MODEL=openrouter/openai/gpt-4o-mini (padrão)
-	- OPENROUTER_BASE_URL=https://openrouter.ai/api/v1 (opcional)
-	- OPENROUTER_REFERER, OPENROUTER_TITLE (opcional: boas práticas)
-- (Feature flag) ENABLE_NOTES_CHAT=1 (sem isso a ferramenta notes_chat não aparece)
-- Dependência: openai (usado com base_url do OpenRouter)
-- Uso via MCP (notes_chat):
-	- prompt: instrução em linguagem natural
-	- params.temperature (opcional), params.max_tokens (opcional)
-	- params.timeout_seconds (opcional, default 60)
+### Solução de Problemas
+- "Connection closed": verifique comando no `mcp.json` e variáveis obrigatórias.
+- Erros SSL corporativo: usar store do sistema (truststore) ou `MCP_INSECURE_SKIP_VERIFY=1` (apenas dev).
+- 403 HTML: proxy bloqueando → resposta 502 com `proxy_blocked`.
+- `network_error`: ver rede/proxy antes de repetir.
+- Supabase erros de operador: certificar coluna `tags` tipo `text[]` e uso de `overlaps`.
 
-Fluxo notes_chat
-1. Primeira passada: o LLM pode produzir texto preliminar e/ou solicitar ferramentas (add_note, search_notes).
-2. O servidor executa cada ferramenta e coleta resultados.
-3. Se houve ferramentas, é feita uma segunda chamada de síntese final (sem novas ferramentas) incorporando os resultados.
-4. A resposta final contém: text (mensagem final), actions (lista de execuções) e synthesized=true/false.
+### Segurança
+Não reutilize a mesma `AUTH_API_KEY` em produção sem rotação. Considere adaptar para JWT / OAuth se expor publicamente.
 
-Desabilitar
-- Remova ENABLE_NOTES_CHAT ou a API key para a ferramenta sumir da lista.
+### Roadmap (Ideias Futuras)
+- Streaming (SSE/WebSocket) de tokens/síntese.
+- Rotação de histórico / tamanho máximo.
+- Policies de retry configuráveis.
+- Indexação full‑text opcional.
 
-$env:MCP_INSECURE_SKIP_VERIFY="1"
-
-C:/Projetos/mcp-server-note/venv/Scripts/python.exe -m mcp_simple_tool.server --transport stdio
-
+---
+Projeto em evolução – contribuições e melhorias são bem‑vindas.

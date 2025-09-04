@@ -47,8 +47,18 @@ load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Any | None = None  # permite monkeypatch em testes
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+# Lazy init do cliente Supabase para evitar custo em import/tests sem credenciais
+def _init_client() -> Client:
+    existing = globals().get('supabase')
+    # Aceita dummies injetados em testes (qualquer objeto com 'table')
+    if existing is not None and hasattr(existing, 'table'):
+        return existing  # type: ignore
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("Supabase credentials not configured (defina SUPABASE_URL e SUPABASE_KEY)")
+    globals()['supabase'] = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return globals()['supabase']  # type: ignore
 
 # Cache simples para consultas search_notes
 _SEARCH_CACHE: Dict[Tuple[Any, Any, Tuple[str, ...]], Dict[str, Any]] = {}
@@ -104,7 +114,8 @@ def add_note_tool(content: str, title: str, tags: List[str]) -> Dict[str, Any]:
         tags = _sanitize_tags(tags or [])
         data = {"content": content, "title": title, "tags": tags}
         logger.info("add_note: inserting note title=%s tags=%s", title, tags)
-        response = supabase.table("notes").insert(data).execute()
+        client = _init_client()
+        response = client.table("notes").insert(data).execute()
         resp_dict = getattr(response, "__dict__", {})
         if resp_dict.get("error"):
             err = resp_dict["error"]
@@ -112,7 +123,6 @@ def add_note_tool(content: str, title: str, tags: List[str]) -> Dict[str, Any]:
             if isinstance(err, dict):
                 return _err(err.get("message", str(err)), err.get("code"), err.get("details"))
             return _err(str(err))
-        # Invalida cache simples após inserção
         if _SEARCH_CACHE:
             _SEARCH_CACHE.clear()
             logger.debug("add_note: cache search_notes invalidated")
@@ -137,15 +147,14 @@ def search_notes_tool(
         if cached and (now - cached.get("_ts", 0) < _CACHE_TTL_SECONDS):
             logger.debug("search_notes: cache hit query=%s title=%s tags=%s", query, title, stags)
             return _ok({"results": cached["results"], "cached": True})
-
-        qb = supabase.table("notes").select("*")
+        client = _init_client()
+        qb = client.table("notes").select("*")
         if query:
             qb = qb.ilike("content", f"%{query}%")
         if title:
             qb = qb.ilike("title", f"%{title}%")
         if stags:
             qb = qb.overlaps("tags", stags)
-
         logger.info("search_notes: query=%s title=%s tags=%s", query, title, stags)
         response = qb.execute()
         resp_dict = getattr(response, "__dict__", {})
@@ -155,7 +164,6 @@ def search_notes_tool(
             if isinstance(err, dict):
                 return _err(err.get("message", str(err)), err.get("code"), err.get("details"))
             return _err(str(err))
-
         _SEARCH_CACHE[cache_key] = {"results": response.data, "_ts": now}
         return _ok({"results": response.data, "cached": False})
     except Exception as e:
